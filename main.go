@@ -31,7 +31,7 @@ func main() {
 
 	log.Printf("Starting cgify using %s on port %d serving %s with prefix %s\n", protocolString, *port, path, *prefix)
 
-	sock, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	sock, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
 	if err != nil {
 		log.Fatal(err)
 	}
