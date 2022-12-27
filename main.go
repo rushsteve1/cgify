@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/cgi"
 	"net/http/fcgi"
+	"os"
 	"path/filepath"
 )
 
@@ -24,37 +25,65 @@ func main() {
 		protocolString = "HTTP"
 	}
 
-	path := flag.Arg(0)
-	if path == "" {
+	cgiPath := flag.Arg(0)
+	if cgiPath == "" {
 		log.Fatal("A single argument of the path to the CGI directory is required")
 	}
+	cgiPath, err := filepath.Abs(cgiPath)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	log.Printf("Starting cgify using %s on port %d serving %s with prefix %s\n", protocolString, *port, path, *prefix)
+	log.Printf(
+		"Starting cgify using %s on port %d serving %s with prefix %s\n",
+		protocolString,
+		*port,
+		cgiPath,
+		*prefix,
+	)
 
 	sock, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	handler := http.StripPrefix(*prefix, makeCgiHandler(path))
-
-	if *useHttp {
-		log.Fatal(http.Serve(sock, handler))
-	} else {
-		log.Fatal(fcgi.Serve(sock, handler))
-	}
-}
-
-func makeCgiHandler(cgiPath string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		path := filepath.Join(cgiPath, r.URL.Path)
+	handlerFunc := func(w http.ResponseWriter, r *http.Request) {
+		var path string
+		if r.URL.Path != "" {
+			path = filepath.Join(cgiPath, r.URL.Path)
+		} else {
+			path = filepath.Join(cgiPath, "index.html")
+		}
 
 		var logger *log.Logger = nil
 		if *verbose {
 			logger = log.Default()
 		}
 
-		handler := &cgi.Handler{Path: path, Logger: logger, Root: *prefix}
-		handler.ServeHTTP(w, r)
+		stat, err := os.Stat(path)
+		if err != nil {
+			if logger != nil {
+				logger.Print(err.Error())
+			}
+			http.Error(w, err.Error(), 500)
+		}
+
+		if stat.Mode()&0111 != 0 {
+			handler := &cgi.Handler{Path: path, Logger: logger, Root: *prefix}
+			handler.ServeHTTP(w, r)
+		} else {
+			if logger != nil {
+				log.Printf("Serving static file: %s", path)
+			}
+			http.ServeFile(w, r, path)
+		}
+	}
+
+	handler := http.StripPrefix(*prefix, http.HandlerFunc(handlerFunc))
+
+	if *useHttp {
+		log.Fatal(http.Serve(sock, handler))
+	} else {
+		log.Fatal(fcgi.Serve(sock, handler))
 	}
 }
