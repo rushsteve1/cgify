@@ -49,11 +49,7 @@ func main() {
 
 	handlerFunc := func(w http.ResponseWriter, r *http.Request) {
 		var path string
-		if r.URL.Path != "" {
-			path = filepath.Join(cgiPath, r.URL.Path)
-		} else {
-			path = filepath.Join(cgiPath, "index.html")
-		}
+		path = filepath.Join(cgiPath, r.URL.Path)
 
 		var logger *log.Logger = nil
 		if *verbose {
@@ -61,11 +57,21 @@ func main() {
 		}
 
 		stat, err := os.Stat(path)
+
+		if err == nil && stat.IsDir() {
+			path = filepath.Join(path, "index.html")
+			stat, err = os.Stat(path)
+		}
+
 		if err != nil {
 			if logger != nil {
 				logger.Print(err.Error())
 			}
-			http.Error(w, err.Error(), 500)
+			if os.IsNotExist(err) {
+				http.NotFound(w, r);
+			} else {
+				http.Error(w, err.Error(), 500)
+			}
 			return
 		}
 
