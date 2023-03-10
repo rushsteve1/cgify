@@ -66,6 +66,7 @@ func main() {
 				logger.Print(err.Error())
 			}
 			http.Error(w, err.Error(), 500)
+			return
 		}
 
 		if stat.Mode()&0111 != 0 {
